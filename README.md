@@ -77,13 +77,29 @@ Place assets in the `assets/` directory or update the paths in `main.py`.
 
 ```
 MOM-BIRD/
-├── main.py          # Main game file
-├── buildozer.spec   # Buildozer configuration for Android builds
+├── main.py                  # Main game file (pygbag-compatible)
+├── main-for-windows-exe.py  # Windows executable version (PyInstaller)
+├── build_web.py             # Web build script (pygbag)
+├── buildozer.spec           # Buildozer configuration for Android builds
 ├── assets/
-│   ├── mom.png      # Custom jumpscare image (optional)
-│   └── scare.mp3    # Custom jumpscare sound (optional)
+│   ├── mom.png              # Custom jumpscare image (optional)
+│   └── scare.mp3            # Custom jumpscare sound (optional)
 └── README.md
 ```
+
+## Building for Web (Optional)
+
+This project supports web deployment via **pygbag** (WASM).
+
+```bash
+# Install pygbag
+pip install pygbag
+
+# Build web version
+python build_web.py
+```
+
+Output will be in `build/web/` — deploy to any static host (GitHub Pages, Netlify, itch.io, etc.).
 
 ## Building for Android (Optional)
 
