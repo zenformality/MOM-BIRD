@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up Java 17          # ← THE FIX
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -32,7 +32,7 @@ jobs:
             build-essential libssl-dev libffi-dev \
             libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
             libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
-            zlib1g-dev autoconf libtool pkg-config libltdl-dev ccache
+            zlib1g-dev autoconf libtool pkg-config libltdl-dev
 
       - name: Install Python build tools
         run: |
@@ -43,28 +43,21 @@ jobs:
         run: |
           SDK=$HOME/android-sdk
           mkdir -p $SDK/cmdline-tools
-
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdtools.zip
           unzip -q cmdtools.zip -d $SDK/cmdline-tools
           mv $SDK/cmdline-tools/cmdline-tools $SDK/cmdline-tools/latest
           rm cmdtools.zip
-
           export PATH=$SDK/cmdline-tools/latest/bin:$PATH
-
           yes | sdkmanager --sdk_root=$SDK --licenses > /dev/null 2>&1 || true
           sdkmanager --sdk_root=$SDK \
             "platform-tools" \
             "platforms;android-33" \
             "build-tools;33.0.2"
-
-          # sdkmanager shim for buildozer
           mkdir -p $SDK/tools/bin
           echo '#!/bin/bash' > $SDK/tools/bin/sdkmanager
           echo "exec $SDK/cmdline-tools/latest/bin/sdkmanager \"\$@\"" >> $SDK/tools/bin/sdkmanager
           chmod +x $SDK/tools/bin/sdkmanager
-
           echo "SDK=$SDK" >> $GITHUB_ENV
-          find $SDK -name "aidl" && echo "✅ aidl OK"
 
       - name: Set up NDK r25b
         run: |
@@ -72,14 +65,73 @@ jobs:
           wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -O ndk.zip
           unzip -q ndk.zip -d $HOME/.buildozer/android/platform/
           rm ndk.zip
-          echo "✅ NDK ready"
-          ls $HOME/.buildozer/android/platform/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
+          echo "✅ NDK r25b ready"
 
       - name: Wire SDK to buildozer
         run: |
-          mkdir -p $HOME/.buildozer/android/platform
           ln -sfn $HOME/android-sdk $HOME/.buildozer/android/platform/android-sdk
-          $HOME/android-sdk/tools/bin/sdkmanager --version && echo "✅ shim works"
+
+      - name: Patch p4a pygame recipe for Python 3.10+
+        run: |
+          # Find where buildozer put p4a (or pre-clone it)
+          P4A_DEST=$HOME/.buildozer/android/platform/python-for-android
+          mkdir -p $(dirname $P4A_DEST)
+
+          git clone --depth 1 https://github.com/kivy/python-for-android.git $P4A_DEST
+          echo "✅ p4a cloned"
+
+          RECIPE=$P4A_DEST/pythonforandroid/recipes/pygame/__init__.py
+          echo "=== Original recipe version ==="
+          grep -E "version|url" $RECIPE | head -5
+
+          # Write a fixed recipe pointing to pygame 2.6.1
+          cat > $RECIPE << 'EOF'
+from pythonforandroid.recipe import CythonRecipe
+
+
+class PygameRecipe(CythonRecipe):
+    version = '2.6.1'
+    url = 'https://github.com/pygame/pygame/archive/refs/tags/{version}.tar.gz'
+    name = 'pygame'
+    depends = ['python3', 'sdl2', 'sdl2_image', 'sdl2_mixer', 'sdl2_ttf', 'freetype']
+    call_hostpython_via_targetpython = False
+    install_in_hostpython = False
+
+    def get_recipe_env(self, arch):
+        env = super().get_recipe_env(arch)
+        return env
+
+    def postbuild_arch(self, arch):
+        # Fix longintrepr.h missing in Python 3.10+
+        import glob, os
+        build_dir = self.get_build_dir(arch.arch)
+        sdl2_c = os.path.join(build_dir, 'src_c', '_sdl2', 'sdl2.c')
+        if os.path.exists(sdl2_c):
+            with open(sdl2_c, 'r') as f:
+                content = f.read()
+            if 'longintrepr.h' in content:
+                content = content.replace(
+                    '#include "longintrepr.h"',
+                    '#if PY_VERSION_HEX < 0x030C0000\n#include "longintrepr.h"\n#endif'
+                )
+                with open(sdl2_c, 'w') as f:
+                    f.write(content)
+                print('✅ Patched longintrepr.h in sdl2.c')
+        super().postbuild_arch(arch)
+
+
+recipe = PygameRecipe()
+EOF
+
+          echo "✅ Recipe updated to pygame 2.6.1"
+
+          # Tell buildozer to use this p4a
+          grep -q "p4a.source_dir" buildozer.spec \
+            && sed -i "s|.*p4a.source_dir.*|p4a.source_dir = $P4A_DEST|" buildozer.spec \
+            || echo "p4a.source_dir = $P4A_DEST" >> buildozer.spec
+
+          echo "=== p4a.source_dir in spec ==="
+          grep "p4a.source_dir" buildozer.spec
 
       - name: Cache Buildozer packages
         uses: actions/cache@v4
@@ -92,7 +144,6 @@ jobs:
         run: |
           SDK=$HOME/android-sdk
           NDK=$HOME/.buildozer/android/platform/android-ndk-r25b
-
           export ANDROIDSDK=$SDK
           export ANDROIDNDK=$NDK
           export ANDROID_SDK_ROOT=$SDK
