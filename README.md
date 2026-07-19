@@ -1,23 +1,27 @@
-# Touch the Pipe If You Hate Your Mom
+# MOM-BIRD
 
-A Flappy Bird-style game with a jumpscare twist — hit a pipe and face your mom.
+A Flappy Bird-style game built with Python and Pygame. Navigate the bird through pipes — touch a pipe and face the consequences.
 
 ## About
 
-A Flappy Bird clone built with Python and Pygame. Navigate the bird through pipes, but be careful — touching a pipe triggers a jumpscare featuring your mom.
+MOM-BIRD is a challenging arcade game where you control a bird navigating through an endless series of pipes. Touch a pipe and you'll trigger a jumpscare featuring a custom image and sound. The game features smooth bird physics, animated wings, scrolling ground, and a distinctive jumpscare mechanic.
+
+**Made by zenx.pc**
 
 ## Features
 
-- Classic Flappy Bird gameplay
-- Custom jumpscare image and sound (replace with your own assets)
-- Placeholder jumpscare drawing if assets are missing
-- Score tracking
-- Menu, gameplay, jumpscare, and game over states
+- Flappy Bird-style gameplay with smooth physics
+- Animated bird with wing flapping and tilt based on velocity
+- Scrolling ground with seamless tiling
+- Procedurally generated pipes with consistent gaps
+- Custom jumpscare image and sound support (with procedural fallback)
+- Score tracking with high score persistence
+- Clean game over and restart flow
 
 ## Requirements
 
 - Python 3.8+
-- pygame
+- Pygame 2.0+
 
 Install dependencies:
 
@@ -25,80 +29,95 @@ Install dependencies:
 pip install pygame
 ```
 
-## Assets
+## Installation
 
-The game expects two asset files. Update the paths in `main.py` (lines 17-18) to point to your files:
-
-```python
-MOM_IMAGE_PATH   = "path/to/mom.png"      # Jumpscare image (recommended 480x640)
-SCARE_SOUND_PATH = "path/to/scare.mp3"    # Jumpscare sound effect
+```bash
+git clone https://github.com/zenx-pc/MOM-BIRD.git
+cd MOM-BIRD
+pip install pygame
 ```
 
-Placeholders are used if files are not found.
+## Usage
 
-## Controls
-
-| Action | Key |
-|--------|-----|
-| Flap / Start / Restart | Space / Up Arrow / Left Click |
-| Quit | Escape |
-
-## Run
+Run the game:
 
 ```bash
 python main.py
 ```
-OR 
 
-```bash
-py main.py 
+### Controls
+
+| Key | Action |
+|-----|--------|
+| `SPACE` / `UP` / `Mouse Click` | Flap / Jump |
+| `R` | Restart after game over |
+| `ESC` / `Q` / Close Window | Quit |
+
+### Custom Assets
+
+The game supports custom jumpscare assets. Edit these paths in `main.py`:
+
+```python
+MOM_IMAGE_PATH = "assets/mom.png"        # Jumpscare image (480x640 recommended)
+SCARE_SOUND_PATH = "assets/scare.mp3"    # Jumpscare sound effect
 ```
-## Game States
 
-- **Menu** — Press Space or click to start
-- **Playing** — Flap through pipes, avoid hitting them
-- **Jumpscare** — Triggered on collision; plays sound and shows image
-- **Dead** — Shows final score; press Space or R to restart
+If assets are not found, procedural fallbacks are used automatically.
 
-## Controls Summary
+### Asset Requirements
 
-| State | Action |
-|-------|--------|
-| Menu | Space / Click → Start |
-| Playing | Space / Up / Click → Flap |
-| Dead | Space / R → Restart |
-| Any | Escape → Quit |
+| Asset | Recommended Size | Format |
+|-------|------------------|--------|
+| mom.png | 480 × 640 px | PNG (with transparency) |
+| scare.mp3 | — | MP3 / OGG / WAV |
 
-## Configuration
+Place assets in the `assets/` directory or update the paths in `main.py`.
 
-Constants at the top of `main.py` control gameplay:
-
-| Constant | Default | Description |
-|----------|---------|-------------|
-| `W, H` | 480, 640 | Window dimensions |
-| `GRAVITY` | 0.5 | Gravity per frame |
-| `JUMP_VEL` | -9 | Jump velocity |
-| `PIPE_VEL` | 3 | Pipe scroll speed |
-| `PIPE_GAP` | 190 | Gap between pipes |
-| `PIPE_FREQ` | 90 | Frames between pipe spawns |
-
-## Assets Location
-
-Place your assets in the `assets/` folder and update the paths in `main.py`:
+## Project Structure
 
 ```
 MOM-BIRD/
+├── main.py          # Main game file
+├── buildozer.spec   # Buildozer configuration for Android builds
 ├── assets/
-│   ├── mom.png      # Jumpscare image
-│   └── scare.mp3    # Jumpscare sound
-├── main.py
+│   ├── mom.png      # Custom jumpscare image (optional)
+│   └── scare.mp3    # Custom jumpscare sound (optional)
 └── README.md
 ```
 
+## Building for Android (Optional)
+
+This project includes a `buildozer.spec` configuration for building an Android APK using Buildozer.
+
+```bash
+# Install buildozer (Linux/WSL recommended)
+pip install buildozer
+
+# Build debug APK
+buildozer -v android debug
+```
+
+Note: Building for Android requires a Linux environment (WSL on Windows works). The game uses Pygame which is supported via the python-for-android toolchain.
+
+## Configuration
+
+Key game constants in `main.py` (lines 10-18):
+
+```python
+W, H = 480, 640          # Window dimensions
+GRAVITY = 0.5            # Gravity strength
+FLAP_STRENGTH = -9       # Jump velocity
+PIPE_GAP = 160           # Gap between pipes
+PIPE_SPEED = 3           # Pipe scroll speed
+PIPE_SPAWN = 1500        # Pipe spawn interval (ms)
+```
+
+Adjust these values to tune difficulty.
+
 ## License
 
-MIT License
+This project is open source. Feel free to modify and distribute.
 
----
+## Author
 
-Made by zenx.pc
+**zenx.pc**

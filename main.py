@@ -14,8 +14,8 @@ clock = pygame.time.Clock()
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 👇 CHANGE THESE TWO LINES TO YOUR FILE PATHS
-MOM_IMAGE_PATH  = "/assets/mom.png"          # e.g. "C:/Users/Asus/Pictures/mom.png"
-SCARE_SOUND_PATH = "/assets/scare.mp3"   # e.g. "C:/Users/Asus/Music/scare.mp3"
+MOM_IMAGE_PATH  = "assets/mom.png"          # e.g. "C:/Users/Asus/Pictures/mom.png"
+SCARE_SOUND_PATH = "assets/scare.mp3"   # e.g. "C:/Users/Asus/Music/scare.mp3"
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # ── Load assets (graceful fallback if files not found yet) ────────────────────
