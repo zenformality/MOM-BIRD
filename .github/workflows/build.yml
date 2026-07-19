@@ -13,6 +13,12 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Set up Java 17          # ← THE FIX
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
@@ -22,7 +28,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
-            git zip unzip openjdk-17-jdk \
+            git zip unzip \
             build-essential libssl-dev libffi-dev \
             libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
             libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
@@ -33,12 +39,11 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython==0.29.36
 
-      - name: Set up Android SDK manually (bypass buildozer SDK management)
+      - name: Set up Android SDK
         run: |
           SDK=$HOME/android-sdk
           mkdir -p $SDK/cmdline-tools
 
-          # Download cmdline-tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdtools.zip
           unzip -q cmdtools.zip -d $SDK/cmdline-tools
           mv $SDK/cmdline-tools/cmdline-tools $SDK/cmdline-tools/latest
@@ -46,55 +51,35 @@ jobs:
 
           export PATH=$SDK/cmdline-tools/latest/bin:$PATH
 
-          # Accept all licenses
           yes | sdkmanager --sdk_root=$SDK --licenses > /dev/null 2>&1 || true
-
-          # Install required components
           sdkmanager --sdk_root=$SDK \
             "platform-tools" \
             "platforms;android-33" \
             "build-tools;33.0.2"
 
-          # Verify aidl
-          find $SDK -name "aidl" && echo "✅ aidl OK"
-
-          # Create tools/bin/sdkmanager shim — THIS is what buildozer looks for
+          # sdkmanager shim for buildozer
           mkdir -p $SDK/tools/bin
-          cat > $SDK/tools/bin/sdkmanager << 'EOF'
-          #!/bin/bash
-          exec $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "$@"
-          EOF
+          echo '#!/bin/bash' > $SDK/tools/bin/sdkmanager
+          echo "exec $SDK/cmdline-tools/latest/bin/sdkmanager \"\$@\"" >> $SDK/tools/bin/sdkmanager
           chmod +x $SDK/tools/bin/sdkmanager
 
           echo "SDK=$SDK" >> $GITHUB_ENV
+          find $SDK -name "aidl" && echo "✅ aidl OK"
 
-      - name: Set up Android NDK r25b
+      - name: Set up NDK r25b
         run: |
-          NDK_DIR=$HOME/android-sdk/ndk/25.2.9519653
-          mkdir -p $NDK_DIR
-
-          wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -O ndk.zip
-          unzip -q ndk.zip
-          cp -r android-ndk-r25b/. $NDK_DIR/
-          rm -rf android-ndk-r25b ndk.zip
-
-          # Also place where buildozer expects it
           mkdir -p $HOME/.buildozer/android/platform
-          cp -r $NDK_DIR $HOME/.buildozer/android/platform/android-ndk-r25b
-
-          echo "✅ NDK r25b ready"
+          wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -O ndk.zip
+          unzip -q ndk.zip -d $HOME/.buildozer/android/platform/
+          rm ndk.zip
+          echo "✅ NDK ready"
           ls $HOME/.buildozer/android/platform/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
 
-      - name: Wire buildozer to our SDK
+      - name: Wire SDK to buildozer
         run: |
-          SDK=$HOME/android-sdk
-
-          # Hard-link SDK into buildozer's expected path
           mkdir -p $HOME/.buildozer/android/platform
-          ln -sfn $SDK $HOME/.buildozer/android/platform/android-sdk
-
-          # Verify the shim works
-          $HOME/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --version && echo "✅ sdkmanager shim works"
+          ln -sfn $HOME/android-sdk $HOME/.buildozer/android/platform/android-sdk
+          $HOME/android-sdk/tools/bin/sdkmanager --version && echo "✅ shim works"
 
       - name: Cache Buildozer packages
         uses: actions/cache@v4
