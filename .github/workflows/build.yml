@@ -33,57 +33,49 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython==0.29.36
 
-      - name: Set up Android SDK + install aidl
+      - name: Install aidl + build-tools into existing SDK
         run: |
-          # Download command-line tools
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          cd $HOME/android-sdk/cmdline-tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdtools.zip
-          unzip -q cmdtools.zip
-          mv cmdline-tools latest
-          rm cmdtools.zip
-
-          # Set env vars
-          export ANDROID_SDK_ROOT=$HOME/android-sdk
-          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
+          # Use the SDK GitHub Actions already provides
+          export ANDROID_SDK_ROOT=$ANDROID_HOME
+          echo "Using SDK at: $ANDROID_SDK_ROOT"
 
           # Accept licenses
-          yes | sdkmanager --licenses > /dev/null 2>&1
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
 
-          # Install build-tools (contains aidl) + platform + tools
-          sdkmanager \
-            "build-tools;34.0.0" \
+          # Install what buildozer needs
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "build-tools;33.0.2" \
             "platforms;android-33" \
-            "platform-tools" \
-            "tools"
+            "platform-tools"
 
-          # Verify aidl is now available
-          find $HOME/android-sdk -name "aidl" 2>/dev/null
-          echo "✅ aidl installed"
+          # Verify aidl exists
+          find $ANDROID_HOME -name "aidl" 2>/dev/null && echo "✅ aidl found" || echo "❌ aidl missing"
 
-      - name: Configure buildozer to use our SDK
+      - name: Configure buildozer to use pre-installed SDK
         run: |
-          # Point buildozer at the SDK we just set up
+          # Tell buildozer to use the existing SDK — don't let it download its own
           mkdir -p ~/.buildozer/android/platform
-          ln -sf $HOME/android-sdk ~/.buildozer/android/platform/android-sdk
+          ln -sf $ANDROID_HOME ~/.buildozer/android/platform/android-sdk
 
-      - name: Cache Buildozer directory
+          # Also set NDK — use the one already on the runner (r27)
+          # but we need r25b for p4a compatibility, so let buildozer grab it
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROIDSDK=$ANDROID_HOME" >> $GITHUB_ENV
+
+      - name: Cache Buildozer (NDK + packages)
         uses: actions/cache@v4
         with:
           path: |
-            ~/.buildozer
-            ~/.gradle
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
-          restore-keys: buildozer-${{ runner.os }}-
+            ~/.buildozer/android/platform/android-ndk-r25b
+            ~/.buildozer/android/packages
+          key: buildozer-ndk-${{ runner.os }}-r25b
+          restore-keys: buildozer-ndk-${{ runner.os }}-
 
       - name: Build APK
-        env:
-          ANDROID_SDK_ROOT: ${{ env.HOME }}/android-sdk
-          ANDROIDSDK: ${{ env.HOME }}/android-sdk
         run: |
-          export ANDROID_SDK_ROOT=$HOME/android-sdk
-          export ANDROIDSDK=$HOME/android-sdk
-          export PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/build-tools/34.0.0:$PATH
+          export ANDROIDSDK=$ANDROID_HOME
+          export ANDROID_SDK_ROOT=$ANDROID_HOME
+          export PATH=$ANDROID_HOME/build-tools/33.0.2:$ANDROID_HOME/platform-tools:$PATH
           buildozer -v android debug 2>&1 | tee build.log
 
       - name: Upload APK
