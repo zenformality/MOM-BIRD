@@ -35,34 +35,21 @@ jobs:
 
       - name: Install aidl + build-tools into existing SDK
         run: |
-          # Use the SDK GitHub Actions already provides
-          export ANDROID_SDK_ROOT=$ANDROID_HOME
-          echo "Using SDK at: $ANDROID_SDK_ROOT"
-
-          # Accept licenses
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-
-          # Install what buildozer needs
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
             "build-tools;33.0.2" \
             "platforms;android-33" \
             "platform-tools"
+          find $ANDROID_HOME -name "aidl" && echo "✅ aidl found" || echo "❌ aidl missing"
 
-          # Verify aidl exists
-          find $ANDROID_HOME -name "aidl" 2>/dev/null && echo "✅ aidl found" || echo "❌ aidl missing"
-
-      - name: Configure buildozer to use pre-installed SDK
+      - name: Configure buildozer SDK path
         run: |
-          # Tell buildozer to use the existing SDK — don't let it download its own
           mkdir -p ~/.buildozer/android/platform
           ln -sf $ANDROID_HOME ~/.buildozer/android/platform/android-sdk
-
-          # Also set NDK — use the one already on the runner (r27)
-          # but we need r25b for p4a compatibility, so let buildozer grab it
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROIDSDK=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
 
-      - name: Cache Buildozer (NDK + packages)
+      - name: Cache NDK
         uses: actions/cache@v4
         with:
           path: |
@@ -76,7 +63,22 @@ jobs:
           export ANDROIDSDK=$ANDROID_HOME
           export ANDROID_SDK_ROOT=$ANDROID_HOME
           export PATH=$ANDROID_HOME/build-tools/33.0.2:$ANDROID_HOME/platform-tools:$PATH
+
+          set +e
           buildozer -v android debug 2>&1 | tee build.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          echo "=== BUILD EXIT CODE: $BUILD_EXIT ==="
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "=== KEY ERRORS ==="
+            grep -E "(ERROR|error:|fatal error|Traceback|Exception)" build.log \
+              | grep -v "^#" | tail -40
+            exit 1
+          fi
+
+      - name: List bin folder
+        run: ls -lh bin/ 2>/dev/null || echo "bin/ folder does not exist"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -85,8 +87,8 @@ jobs:
           path: bin/*.apk
           if-no-files-found: error
 
-      - name: Upload build log on failure
-        if: failure()
+      - name: Upload full build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
