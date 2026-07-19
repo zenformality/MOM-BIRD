@@ -27,12 +27,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y \
-            git zip unzip \
-            build-essential libssl-dev libffi-dev \
-            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
-            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
-            zlib1g-dev autoconf libtool pkg-config libltdl-dev
+          sudo apt-get install -y git zip unzip build-essential libssl-dev libffi-dev libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev autoconf libtool pkg-config libltdl-dev
 
       - name: Install Python build tools
         run: |
@@ -49,13 +44,9 @@ jobs:
           rm cmdtools.zip
           export PATH=$SDK/cmdline-tools/latest/bin:$PATH
           yes | sdkmanager --sdk_root=$SDK --licenses > /dev/null 2>&1 || true
-          sdkmanager --sdk_root=$SDK \
-            "platform-tools" \
-            "platforms;android-33" \
-            "build-tools;33.0.2"
+          sdkmanager --sdk_root=$SDK "platform-tools" "platforms;android-33" "build-tools;33.0.2"
           mkdir -p $SDK/tools/bin
-          echo '#!/bin/bash' > $SDK/tools/bin/sdkmanager
-          echo "exec $SDK/cmdline-tools/latest/bin/sdkmanager \"\$@\"" >> $SDK/tools/bin/sdkmanager
+          printf '#!/bin/bash\nexec %s/cmdline-tools/latest/bin/sdkmanager "$@"\n' "$SDK" > $SDK/tools/bin/sdkmanager
           chmod +x $SDK/tools/bin/sdkmanager
           echo "SDK=$SDK" >> $GITHUB_ENV
 
@@ -71,29 +62,19 @@ jobs:
         run: |
           ln -sfn $HOME/android-sdk $HOME/.buildozer/android/platform/android-sdk
 
-      - name: Patch p4a pygame recipe for Python 3.10+
+      - name: Patch p4a pygame recipe
         run: |
-          # Find where buildozer put p4a (or pre-clone it)
-          P4A_DEST=$HOME/.buildozer/android/platform/python-for-android
-          mkdir -p $(dirname $P4A_DEST)
-
-          git clone --depth 1 https://github.com/kivy/python-for-android.git $P4A_DEST
-          echo "✅ p4a cloned"
-
-          RECIPE=$P4A_DEST/pythonforandroid/recipes/pygame/__init__.py
-          echo "=== Original recipe version ==="
-          grep -E "version|url" $RECIPE | head -5
-
-          # Write a fixed recipe pointing to pygame 2.6.1
-          cat > $RECIPE << 'EOF'
-from pythonforandroid.recipe import CythonRecipe
-
+          P4A=$HOME/.buildozer/android/platform/python-for-android
+          git clone --depth 1 https://github.com/kivy/python-for-android.git $P4A
+          RECIPE=$P4A/pythonforandroid/recipes/pygame/__init__.py
+          python3 -c "
+          content = '''from pythonforandroid.recipe import CythonRecipe
 
 class PygameRecipe(CythonRecipe):
-    version = '2.6.1'
-    url = 'https://github.com/pygame/pygame/archive/refs/tags/{version}.tar.gz'
-    name = 'pygame'
-    depends = ['python3', 'sdl2', 'sdl2_image', 'sdl2_mixer', 'sdl2_ttf', 'freetype']
+    version = \"2.6.1\"
+    url = \"https://github.com/pygame/pygame/archive/refs/tags/{version}.tar.gz\"
+    name = \"pygame\"
+    depends = [\"python3\", \"sdl2\", \"sdl2_image\", \"sdl2_mixer\", \"sdl2_ttf\", \"freetype\"]
     call_hostpython_via_targetpython = False
     install_in_hostpython = False
 
@@ -101,37 +82,30 @@ class PygameRecipe(CythonRecipe):
         env = super().get_recipe_env(arch)
         return env
 
-    def postbuild_arch(self, arch):
-        # Fix longintrepr.h missing in Python 3.10+
-        import glob, os
-        build_dir = self.get_build_dir(arch.arch)
-        sdl2_c = os.path.join(build_dir, 'src_c', '_sdl2', 'sdl2.c')
+    def prebuild_arch(self, arch):
+        super().prebuild_arch(arch)
+        import os
+        sdl2_c = os.path.join(self.get_build_dir(arch.arch), \"src_c\", \"_sdl2\", \"sdl2.c\")
         if os.path.exists(sdl2_c):
-            with open(sdl2_c, 'r') as f:
-                content = f.read()
-            if 'longintrepr.h' in content:
-                content = content.replace(
-                    '#include "longintrepr.h"',
-                    '#if PY_VERSION_HEX < 0x030C0000\n#include "longintrepr.h"\n#endif'
+            with open(sdl2_c, \"r\") as f:
+                src = f.read()
+            if \"longintrepr.h\" in src:
+                src = src.replace(
+                    \"#include \\\\\"longintrepr.h\\\\\"\",
+                    \"#if PY_VERSION_HEX < 0x030C0000\\\\n#include \\\\\"longintrepr.h\\\\\"\\\\n#endif\"
                 )
-                with open(sdl2_c, 'w') as f:
-                    f.write(content)
-                print('✅ Patched longintrepr.h in sdl2.c')
-        super().postbuild_arch(arch)
-
+                with open(sdl2_c, \"w\") as f:
+                    f.write(src)
+                print(\"Patched longintrepr.h\")
 
 recipe = PygameRecipe()
-EOF
-
-          echo "✅ Recipe updated to pygame 2.6.1"
-
-          # Tell buildozer to use this p4a
-          grep -q "p4a.source_dir" buildozer.spec \
-            && sed -i "s|.*p4a.source_dir.*|p4a.source_dir = $P4A_DEST|" buildozer.spec \
-            || echo "p4a.source_dir = $P4A_DEST" >> buildozer.spec
-
-          echo "=== p4a.source_dir in spec ==="
-          grep "p4a.source_dir" buildozer.spec
+'''
+          with open('$RECIPE', 'w') as f:
+              f.write(content)
+          print('Recipe written')
+          "
+          echo "p4a.source_dir = $P4A" >> buildozer.spec
+          echo "✅ p4a patched and spec updated"
 
       - name: Cache Buildozer packages
         uses: actions/cache@v4
@@ -149,17 +123,14 @@ EOF
           export ANDROID_SDK_ROOT=$SDK
           export ANDROID_HOME=$SDK
           export PATH=$SDK/cmdline-tools/latest/bin:$SDK/build-tools/33.0.2:$SDK/platform-tools:$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
-
           set +e
           buildozer -v android debug 2>&1 | tee build.log
           BUILD_EXIT=${PIPESTATUS[0]}
           set -e
-
           echo "=== BUILD EXIT CODE: $BUILD_EXIT ==="
           if [ $BUILD_EXIT -ne 0 ]; then
             echo "=== KEY ERRORS ==="
-            grep -E "(ERROR|error:|fatal error|Traceback|Exception)" build.log \
-              | grep -v "^#" | tail -50
+            grep -E "(ERROR|error:|fatal error|Traceback|Exception)" build.log | grep -v "^#" | tail -50
             exit 1
           fi
 
