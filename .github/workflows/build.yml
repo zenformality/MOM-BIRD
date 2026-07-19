@@ -33,36 +33,86 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython==0.29.36
 
-      - name: Install aidl + build-tools into existing SDK
+      - name: Set up Android SDK manually (bypass buildozer SDK management)
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-            "build-tools;33.0.2" \
+          SDK=$HOME/android-sdk
+          mkdir -p $SDK/cmdline-tools
+
+          # Download cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdtools.zip
+          unzip -q cmdtools.zip -d $SDK/cmdline-tools
+          mv $SDK/cmdline-tools/cmdline-tools $SDK/cmdline-tools/latest
+          rm cmdtools.zip
+
+          export PATH=$SDK/cmdline-tools/latest/bin:$PATH
+
+          # Accept all licenses
+          yes | sdkmanager --sdk_root=$SDK --licenses > /dev/null 2>&1 || true
+
+          # Install required components
+          sdkmanager --sdk_root=$SDK \
+            "platform-tools" \
             "platforms;android-33" \
-            "platform-tools"
-          find $ANDROID_HOME -name "aidl" && echo "✅ aidl found" || echo "❌ aidl missing"
+            "build-tools;33.0.2"
 
-      - name: Configure buildozer SDK path
+          # Verify aidl
+          find $SDK -name "aidl" && echo "✅ aidl OK"
+
+          # Create tools/bin/sdkmanager shim — THIS is what buildozer looks for
+          mkdir -p $SDK/tools/bin
+          cat > $SDK/tools/bin/sdkmanager << 'EOF'
+          #!/bin/bash
+          exec $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "$@"
+          EOF
+          chmod +x $SDK/tools/bin/sdkmanager
+
+          echo "SDK=$SDK" >> $GITHUB_ENV
+
+      - name: Set up Android NDK r25b
         run: |
-          mkdir -p ~/.buildozer/android/platform
-          ln -sf $ANDROID_HOME ~/.buildozer/android/platform/android-sdk
-          echo "ANDROIDSDK=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          NDK_DIR=$HOME/android-sdk/ndk/25.2.9519653
+          mkdir -p $NDK_DIR
 
-      - name: Cache NDK
+          wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -O ndk.zip
+          unzip -q ndk.zip
+          cp -r android-ndk-r25b/. $NDK_DIR/
+          rm -rf android-ndk-r25b ndk.zip
+
+          # Also place where buildozer expects it
+          mkdir -p $HOME/.buildozer/android/platform
+          cp -r $NDK_DIR $HOME/.buildozer/android/platform/android-ndk-r25b
+
+          echo "✅ NDK r25b ready"
+          ls $HOME/.buildozer/android/platform/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/bin/clang
+
+      - name: Wire buildozer to our SDK
+        run: |
+          SDK=$HOME/android-sdk
+
+          # Hard-link SDK into buildozer's expected path
+          mkdir -p $HOME/.buildozer/android/platform
+          ln -sfn $SDK $HOME/.buildozer/android/platform/android-sdk
+
+          # Verify the shim works
+          $HOME/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --version && echo "✅ sdkmanager shim works"
+
+      - name: Cache Buildozer packages
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.buildozer/android/platform/android-ndk-r25b
-            ~/.buildozer/android/packages
-          key: buildozer-ndk-${{ runner.os }}-r25b
-          restore-keys: buildozer-ndk-${{ runner.os }}-
+          path: ~/.buildozer/android/packages
+          key: buildozer-packages-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-packages-${{ runner.os }}-
 
       - name: Build APK
         run: |
-          export ANDROIDSDK=$ANDROID_HOME
-          export ANDROID_SDK_ROOT=$ANDROID_HOME
-          export PATH=$ANDROID_HOME/build-tools/33.0.2:$ANDROID_HOME/platform-tools:$PATH
+          SDK=$HOME/android-sdk
+          NDK=$HOME/.buildozer/android/platform/android-ndk-r25b
+
+          export ANDROIDSDK=$SDK
+          export ANDROIDNDK=$NDK
+          export ANDROID_SDK_ROOT=$SDK
+          export ANDROID_HOME=$SDK
+          export PATH=$SDK/cmdline-tools/latest/bin:$SDK/build-tools/33.0.2:$SDK/platform-tools:$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
 
           set +e
           buildozer -v android debug 2>&1 | tee build.log
@@ -73,12 +123,9 @@ jobs:
           if [ $BUILD_EXIT -ne 0 ]; then
             echo "=== KEY ERRORS ==="
             grep -E "(ERROR|error:|fatal error|Traceback|Exception)" build.log \
-              | grep -v "^#" | tail -40
+              | grep -v "^#" | tail -50
             exit 1
           fi
-
-      - name: List bin folder
-        run: ls -lh bin/ 2>/dev/null || echo "bin/ folder does not exist"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -87,7 +134,7 @@ jobs:
           path: bin/*.apk
           if-no-files-found: error
 
-      - name: Upload full build log
+      - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
