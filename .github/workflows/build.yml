@@ -35,7 +35,7 @@ jobs:
             pkg-config build-essential \
             libffi-dev libssl-dev \
             zlib1g-dev ccache \
-            libncurses5
+
 
       - name: Install Buildozer
         run: |
