@@ -7,7 +7,10 @@ import asyncio
 # -- Init ----------------------------------------------------------------------
 async def main():
     pygame.init()
-    pygame.mixer.init()
+    try:
+        pygame.mixer.init()
+    except Exception:
+        print("Audio not available in this environment.")
 
     W, H = 480, 640
     screen = pygame.display.set_mode((W, H))
@@ -17,7 +20,7 @@ async def main():
     # ----------------------------------------------------------------------------
     # --> CHANGE THESE TWO LINES TO YOUR FILE PATHS
     MOM_IMAGE_PATH  = "assets/mom.png"          # e.g. "C:/Users/Asus/Pictures/mom.png"
-    SCARE_SOUND_PATH = "assets/scare.mp3"   # e.g. "C:/Users/Asus/Music/scare.mp3"
+    SCARE_SOUND_PATH = "assets/scare.ogg"   # e.g. "C:/Users/Asus/Music/scare.ogg"
     # ----------------------------------------------------------------------------
 
     # -- Load assets (graceful fallback if files not found yet) --------------------
@@ -53,9 +56,14 @@ async def main():
     GREY       = (180, 180, 180)
 
     # -- Fonts ---------------------------------------------------------------------
-    font_big   = pygame.font.SysFont("Arial", 52, bold=True)
-    font_mid   = pygame.font.SysFont("Arial", 32, bold=True)
-    font_small = pygame.font.SysFont("Arial", 22)
+    try:
+        font_big   = pygame.font.SysFont("Arial", 52, bold=True)
+        font_mid   = pygame.font.SysFont("Arial", 32, bold=True)
+        font_small = pygame.font.SysFont("Arial", 22)
+    except Exception:
+        font_big   = pygame.font.Font(None, 52)
+        font_mid   = pygame.font.Font(None, 32)
+        font_small = pygame.font.Font(None, 22)
 
     # -- Helper: draw text with outline --------------------------------------------
     def draw_text(surf, text, font, color, cx, cy, outline=BLACK):
@@ -299,7 +307,6 @@ async def main():
         pygame.display.flip()
 
     pygame.quit()
-    sys.exit()
 
 
 if __name__ == "__main__":

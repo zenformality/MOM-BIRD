@@ -17,7 +17,6 @@ def build_web():
         sys.executable, "-m", "pygbag",
         "--build",
         "--app_name", "MOM BIRD",
-        "--template", "minimal.html",
         "main.py"
     ]
     
